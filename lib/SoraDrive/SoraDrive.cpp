@@ -9,7 +9,6 @@ void SoraDrive::init() {
 
     pinMode(Config::Pins::MOTOR_SLEEP, OUTPUT);
     digitalWrite(Config::Pins::MOTOR_SLEEP, LOW);
-
     _initMCPWM();
 }
 

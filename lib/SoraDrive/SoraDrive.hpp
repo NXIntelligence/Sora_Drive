@@ -1,5 +1,7 @@
 #pragma once
 #include "Adafruit_NeoPixel.h"
+#include "BMI270.hpp"
+#include "Wire.h"
 #include <driver/mcpwm_prelude.h>
 
 namespace Config {
@@ -52,4 +54,5 @@ class SoraDrive {
     bool m_defaultBrakeMode{true};
 
     Adafruit_NeoPixel m_neopixels{2, Config::Pins::NEOPIXEL, NEO_GRB + NEO_KHZ800};
+    BMI270 m_imu{Wire};
 };
