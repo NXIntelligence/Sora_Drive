@@ -6,17 +6,19 @@ bool BMI270::init(ACCEL_RANGE acelRange, GYRO_RANGE gyroRange, DATA_RATE dataRat
     // soft resets the chip
     static const uint8_t SOFT_RESET_CMD{0xb6}; 
     _writeRegisterByte(CMD, SOFT_RESET_CMD);
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(15));
+    
+    if (!isCommunicating()) { return false; }
 
     // assumes wire is already started
     _writeRegisterByte(PWR_CONF, 0x00); // Disable adv power save
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     if (!_loadConfigFile()) { return false; }
 
     // Enable Accelerometer and Gyroscope Power Modes in register 0x7D (PWR_CTRL)
     // Set bit 1 (acc_en) and bit 2 (gyr_en)
-    uint8_t pwr_ctrl = 0x0E; 
+    uint8_t pwr_ctrl = 0x0E;
     _writeRegisterByte(PWR_CTRL, pwr_ctrl);
     vTaskDelay(pdMS_TO_TICKS(10));
 
@@ -27,6 +29,37 @@ bool BMI270::init(ACCEL_RANGE acelRange, GYRO_RANGE gyroRange, DATA_RATE dataRat
     _readModifyWrite(GYR_CONF, static_cast<uint8_t>(dataRate), 1, 4);
     _readModifyWrite(ACC_CONF, static_cast<uint8_t>(dataRate), 1, 4);
 
+    switch(acelRange) {
+        case ACCEL_RANGE::RANGE_2G:
+            m_accelScaling = 2.0f * 9.81f / 32768.0f;
+            break;
+        case ACCEL_RANGE::RANGE_4G:
+            m_accelScaling = 4.0f * 9.81f / 32768.0f;
+            break;
+        case ACCEL_RANGE::RANGE_8G:
+            m_accelScaling = 8.0f * 9.81f / 32768.0f;
+            break;
+        case ACCEL_RANGE::RANGE_16G:
+            m_accelScaling = 16.0f * 9.81f / 32768.0f;
+            break;
+    }
+    switch(gyroRange) {
+        case GYRO_RANGE::RANGE_125_DPS:
+            m_dpsScaling = 125.0f / 32768.0f;
+            break;
+        case GYRO_RANGE::RANGE_250_DPS:
+            m_dpsScaling = 250.0f / 32768.0f;
+            break;
+        case GYRO_RANGE::RANGE_500_DPS:
+            m_dpsScaling = 500.0f / 32768.0f;
+            break;
+        case GYRO_RANGE::RANGE_1000_DPS:
+            m_dpsScaling = 1000.0f / 32768.0f;
+            break;
+        case GYRO_RANGE::RANGE_2000_DPS:
+            m_dpsScaling = 2000.0f / 32768.0f;
+            break;
+    }
 
     Serial.println("BMI270 Initialised");
     return true;
@@ -93,37 +126,49 @@ bool BMI270::_readRegister(uint8_t reg, uint8_t* data, size_t len) {
     }
     return true;
 }
-
 bool BMI270::_loadConfigFile() {
-    Serial.println("BMI270 Loading Config File");
+    if (m_configFileLoaded) return true;
 
-    if (m_configFileLoaded) {
-        return false;
-    }
-
-    size_t configSize{sizeof(bmi270_config_file)};
-    size_t chunkSize{32};
-
-    for (size_t i{0}; i < configSize; i += chunkSize) {
-        size_t lengthOfChunk = (chunkSize < configSize - i) ? chunkSize : configSize - i;
-        
-        if(!_writeRegister(INIT_DATA, &bmi270_config_file[i], lengthOfChunk)) {
-            return false; // writing failed
-        }
-        
-        // delayMicroseconds(50);
-    }
-    // tells the chip the config file has completed writing
-    _writeRegisterByte(INIT_CTRL, 0x1);
+    // 1. Start initialization (0x59 = INIT_CTRL)
+    _writeRegisterByte(0x59, 0x00);
     vTaskDelay(pdMS_TO_TICKS(2));
-    // Check the status register if the IMU has successfully loaded.
-    uint8_t status;
+
+    size_t configSize = sizeof(bmi270_config_file);
+    size_t chunkSize = 16; // Or maximum I2C buffer size available
+
+    for (size_t i = 0; i < configSize; i += chunkSize) {
+        size_t length = (chunkSize < configSize - i) ? chunkSize : configSize - i;
+
+        // Base address increments in 16-bit words (bytes / 2)
+        uint16_t wordIndex = static_cast<uint16_t>(i / 2);
+
+        // Set base address registers according to the bit maps in 0x5B and 0x5C
+        uint8_t addr0 = static_cast<uint8_t>(wordIndex & 0x0F);         // Bits 3..0
+        uint8_t addr1 = static_cast<uint8_t>((wordIndex >> 4) & 0xFF);  // Bits 11..4
+
+        _writeRegisterByte(0x5B, addr0); // INIT_ADDR_0
+        _writeRegisterByte(0x5C, addr1); // INIT_ADDR_1
+
+        // Stream full byte data into INIT_DATA (0x5E)
+        if (!_writeRegister(0x5E, const_cast<uint8_t*>(&bmi270_config_file[i]), length)) {
+            return false;
+        }
+        delayMicroseconds(50);
+    }
+
+    // 2. Complete initialization (Write 0x01 to 0x59 INIT_CTRL)
+    _writeRegisterByte(0x59, 0x01);
+    vTaskDelay(pdMS_TO_TICKS(140)); // Wait for internal ASIC verification
+
+    // 3. Verify status
+    uint8_t status = 0;
     _readRegister(INTERNAL_STATUS, &status, 1);
-    if ((status & 0x01) != 0x1) { 
+    
+    if ((status & 0x0F) != 0x01) { 
         Serial.printf("BMI270 Config Load Failed! Status: 0x%02X\n", status);
         return false; 
     }
-    Serial.println("BMI270 Config File Loaded Successfully");
+
     m_configFileLoaded = true;
     return true;
 }
@@ -150,5 +195,53 @@ bool BMI270::readSensorData(AxisData& accel, AxisData& gyro) {
     gyro.y = static_cast<int16_t>((buffer[9] << 8) | buffer[8]);
     gyro.z = static_cast<int16_t>((buffer[11] << 8) | buffer[10]);
     
+    accel.x *= (m_accelScaling);
+    accel.y *= (m_accelScaling);
+    accel.z *= (m_accelScaling);
+
+    gyro.x *= m_dpsScaling;
+    gyro.y *= m_dpsScaling;
+    gyro.z *= m_dpsScaling;
+
+    return true;
+}
+bool BMI270::setCalibrationOffset(CalibOffset& calibData) {
+    // 1. Convert Accel floats to signed 8-bit integers before casting to uint8_t
+    int8_t ax = static_cast<int8_t>(calibData.accel_x);
+    int8_t ay = static_cast<int8_t>(calibData.accel_y);
+    int8_t az = static_cast<int8_t>(calibData.accel_z);
+
+    if (!_writeRegisterByte(OFFSET_0, static_cast<uint8_t>(ax))) return false;
+    if (!_writeRegisterByte(OFFSET_1, static_cast<uint8_t>(ay))) return false;
+    if (!_writeRegisterByte(OFFSET_2, static_cast<uint8_t>(az))) return false;
+    
+    // 2. Convert Gyro floats to signed 16-bit integers first (preserves 2's complement)
+    int16_t gx = static_cast<int16_t>(calibData.gyro_x);
+    int16_t gy = static_cast<int16_t>(calibData.gyro_y);
+    int16_t gz = static_cast<int16_t>(calibData.gyro_z);
+
+    // 3. Reinterpret as uint16_t to perform clean 10-bit masking
+    uint16_t u_gx = static_cast<uint16_t>(gx) & 0x03FF;
+    uint16_t u_gy = static_cast<uint16_t>(gy) & 0x03FF;
+    uint16_t u_gz = static_cast<uint16_t>(gz) & 0x03FF;
+
+    // Write lower 8 bits of Gyro Offsets
+    if (!_writeRegisterByte(OFFSET_3, static_cast<uint8_t>(u_gx & 0xFF))) return false;
+    if (!_writeRegisterByte(OFFSET_4, static_cast<uint8_t>(u_gy & 0xFF))) return false;
+    if (!_writeRegisterByte(OFFSET_5, static_cast<uint8_t>(u_gz & 0xFF))) return false;
+    
+    // Extract upper 2 bits (bits 8 & 9)
+    uint8_t gyr_x_msb = (u_gx >> 8) & 0x03;
+    uint8_t gyr_y_msb = (u_gy >> 8) & 0x03;
+    uint8_t gyr_z_msb = (u_gz >> 8) & 0x03;
+
+    // Pack OFFSET_6 (0x77)
+    uint8_t offset_6_val = (1 << 6)                 // gyr_off_en = 1
+                         | (gyr_z_msb << 4)         // bits 5..4
+                         | (gyr_y_msb << 2)         // bits 3..2
+                         | (gyr_x_msb << 0);        // bits 1..0
+
+    if (!_writeRegisterByte(OFFSET_6, offset_6_val)) return false;
+
     return true;
 }

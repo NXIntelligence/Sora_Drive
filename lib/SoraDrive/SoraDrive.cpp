@@ -12,6 +12,20 @@ void SoraDrive::init() {
     _initMCPWM();
 }
 
+void SoraDrive::initGyro(bool calibrateGyro) {
+    Wire.begin(Config::Pins::I2C_SDA, Config::Pins::I2C_SCL, 400'000);
+    m_imu.init(BMI270::ACCEL_RANGE::RANGE_4G, BMI270::GYRO_RANGE::RANGE_125_DPS, BMI270::DATA_RATE::DATA_100_HZ);
+    _calibrateGyro();    
+}
+
+void SoraDrive::printYaw() {
+    BMI270::AxisData accelData{};
+    BMI270::AxisData gyroData{};
+
+    m_imu.readSensorData(accelData, gyroData);
+    Serial.printf(">GyroYaw:%f\n", gyroData.z);
+}
+
 void SoraDrive::enableMotors(bool enable) { digitalWrite(Config::Pins::MOTOR_SLEEP, enable ? HIGH : LOW); }
 void SoraDrive::setDefaultBrakeMode() { m_defaultBrakeMode = true; }
 void SoraDrive::setDefaultCoastMode() { m_defaultBrakeMode = false; }
@@ -50,6 +64,9 @@ void SoraDrive::_initMCPWM() {
     cmprConfig.flags.update_cmp_on_tez = true;
     mcpwm_new_comparator(m_operA, &cmprConfig, &m_cmprA);
     mcpwm_new_comparator(m_operB, &cmprConfig, &m_cmprB);
+    // Set initial compare values to 0 duty cycle
+    mcpwm_comparator_set_compare_value(m_cmprA, 0);
+    mcpwm_comparator_set_compare_value(m_cmprB, 0);
 
     // generator pins configurations
     mcpwm_generator_config_t genFwdA_config = {
@@ -100,7 +117,7 @@ void SoraDrive::_setMotorOutput(mcpwm_cmpr_handle_t cmpr,
                                   mcpwm_gen_handle_t  genRev,
                                   float output) {
     output = constrain(output, -100.0f, 100.0f);
-    uint32_t duty = static_cast<uint32_t>(fabsf(output)/100.0f) * Config::MotorDriver::PWM_PEAK_TICKS;
+    uint32_t duty = static_cast<uint32_t>(Config::MotorDriver::PWM_PEAK_TICKS * fabsf(output) / 100.0f);
         // Clamp so compare never lands on 0 (boundary with counter zero)
     if (duty == 0) duty = 1;
 
@@ -121,6 +138,35 @@ void SoraDrive::_setMotorOutput(mcpwm_cmpr_handle_t cmpr,
             mcpwm_generator_set_force_level(genFwd, 0, true);   // both forced LOW = COAST
             mcpwm_generator_set_force_level(genRev, 0, true);
         }
-
     }
+}
+
+void SoraDrive::_calibrateGyro() {
+    Serial.println("Calibrating Gyro");
+    static const int samples{100};
+    BMI270::AxisData accelData{};
+    BMI270::AxisData gyroData{};
+    BMI270::CalibOffset calibData{0, 0, 0, 0, 0, 0};
+    for (int i{0}; i < samples; i++) {
+        m_imu.readSensorData(accelData, gyroData);
+        calibData.accel_x += accelData.x;
+        calibData.accel_y += accelData.y;
+        calibData.accel_z += accelData.z;
+
+        calibData.gyro_x += gyroData.x;
+        calibData.gyro_y += gyroData.y;
+        calibData.gyro_z += gyroData.z;
+        delay(10);
+    }
+    calibData.accel_x /= -samples * 0.061;
+    calibData.accel_y /= -samples * 0.061;
+    calibData.accel_z /= -samples * 0.061;
+    
+    calibData.gyro_x /= -samples * 0.061;
+    calibData.gyro_y /= -samples * 0.061;
+    calibData.gyro_z /= -samples * 0.061;
+    m_imu.setCalibrationOffset(calibData);
+    Serial.println(calibData.gyro_z);
+    Serial.println("Gyro Calibrated");
+
 }

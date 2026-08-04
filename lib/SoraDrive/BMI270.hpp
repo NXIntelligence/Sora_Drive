@@ -12,9 +12,18 @@ namespace Config {
 class BMI270 {
     public:
     struct AxisData {
-        int16_t x;
-        int16_t y;
-        int16_t z;
+        float x;
+        float y;
+        float z;
+    };
+    struct CalibOffset {
+        float gyro_x;
+        float gyro_y;
+        float gyro_z;
+
+        float accel_x;
+        float accel_y;
+        float accel_z;
     };
 
     enum class ACCEL_RANGE {
@@ -47,6 +56,7 @@ class BMI270 {
     bool readSensorData(AxisData& accel, AxisData& gyro);
     float getTemperature();
     bool isCommunicating(); // checks if we are communicating with the chip
+    bool setCalibrationOffset(CalibOffset& calibData);
 
     private:
     bool _writeRegisterByte(uint8_t reg, uint8_t data);
@@ -57,6 +67,8 @@ class BMI270 {
     TwoWire& m_wire;
 
     bool m_configFileLoaded{false};
+    float m_dpsScaling{0.0f};
+    float m_accelScaling{0.0f};
 
     // registers
     static constexpr uint8_t PWR_CONF{0x7C}; // < Power mode config register
@@ -75,5 +87,16 @@ class BMI270 {
     static constexpr uint8_t GYR_CONF{0x42}; // GYR Config Reg
     static constexpr uint8_t ACC_RANGE{0x41}; // ACCEL Range Config Reg
     static constexpr uint8_t ACC_CONF{0x40}; // ACC Config Reg
+
+    // Calibration offset regs
+    static constexpr uint8_t NV_CONF{0x70}; // Enable accel offset reg and NVM stuff
+    static constexpr uint8_t OFFSET_0{0x71}; // X Accel offset reg
+    static constexpr uint8_t OFFSET_1{0x72}; // Y Accel offset reg
+    static constexpr uint8_t OFFSET_2{0x73}; // Z Accel offset reg
+    
+    static constexpr uint8_t OFFSET_3{0x74}; // X Gyro offset reg
+    static constexpr uint8_t OFFSET_4{0x75}; // Y Gyro offset reg
+    static constexpr uint8_t OFFSET_5{0x76}; // Z Gyro offset reg
+    static constexpr uint8_t OFFSET_6{0x77}; // Gyro Offset enable and gyro offset MSB reg
 
 };

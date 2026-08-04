@@ -12,6 +12,9 @@ namespace Config {
         static constexpr uint32_t MOTOR_A_IN2{12};
         static constexpr uint32_t MOTOR_B_IN1{9};
         static constexpr uint32_t MOTOR_B_IN2{11};
+        
+        static constexpr uint32_t I2C_SCL{47};
+        static constexpr uint32_t I2C_SDA{21};
     };
     namespace MotorDriver{
         static constexpr uint32_t PWM_COUNTER_FREQ{80'000'000}; // freq of pwm clock that counts
@@ -32,8 +35,11 @@ class SoraDrive {
     void setDefaultCoastMode(); // when output is set to 0 the motor is put into coast mode
     void setDefaultBrakeMode(); // when output is set to 0 the motor is put into brake mode
     
+    void printYaw();
+
     Adafruit_NeoPixel& getAdafruitNeopixel(); // returns a reference of the initialised adafruit neopixel.
     private:
+    void _calibrateGyro();
     void _initMCPWM();
     void _setMotorOutput(mcpwm_cmpr_handle_t cmpr,
                             mcpwm_gen_handle_t  genFwd,
