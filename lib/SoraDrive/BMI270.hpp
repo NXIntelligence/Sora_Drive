@@ -57,6 +57,7 @@ class BMI270 {
     float getTemperature();
     bool isCommunicating(); // checks if we are communicating with the chip
     bool setCalibrationOffset(CalibOffset& calibData);
+    bool calibrateCRT();
 
     private:
     bool _writeRegisterByte(uint8_t reg, uint8_t data);
@@ -64,6 +65,8 @@ class BMI270 {
     bool _readRegister(uint8_t reg, uint8_t* data, size_t len);
     bool _readModifyWrite(uint8_t reg, uint8_t newData, size_t len, size_t bits); // modifies the bits amount of data 
     bool _loadConfigFile(); // loads bosch's required config file onto chip
+    bool _writeFeatureWord(uint8_t reg, uint16_t data, uint8_t featurePage);
+    bool _readFeatureWord(uint8_t reg, uint16_t& data, uint8_t featurePage);
     TwoWire& m_wire;
 
     bool m_configFileLoaded{false};
@@ -71,6 +74,8 @@ class BMI270 {
     float m_accelScaling{0.0f};
 
     // registers
+    static constexpr uint8_t FEAT_PAGE_REG{0x2F}; // Page selector register
+
     static constexpr uint8_t PWR_CONF{0x7C}; // < Power mode config register
     static constexpr uint8_t PWR_CTRL{0x7D}; // < Power mode control register
     static constexpr uint8_t CHIP_ID{0x00}; // < Power mode control register

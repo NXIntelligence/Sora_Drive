@@ -36,8 +36,11 @@ class SoraDrive {
     void setDefaultBrakeMode(); // when output is set to 0 the motor is put into brake mode
     
     void printYaw();
+    float getYaw();
+    float getXAccel();
+    float getYAccel();
 
-    Adafruit_NeoPixel& getAdafruitNeopixel(); // returns a reference of the initialised adafruit neopixel.
+    Adafruit_NeoPixel& getAdafruitNeopixel() {return m_neopixels; } // returns a reference of the initialised adafruit neopixel.
     private:
     void _calibrateGyro();
     void _initMCPWM();

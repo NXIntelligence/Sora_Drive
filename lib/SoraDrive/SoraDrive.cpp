@@ -14,7 +14,16 @@ void SoraDrive::init() {
 
 void SoraDrive::initGyro(bool calibrateGyro) {
     Wire.begin(Config::Pins::I2C_SDA, Config::Pins::I2C_SCL, 400'000);
-    m_imu.init(BMI270::ACCEL_RANGE::RANGE_4G, BMI270::GYRO_RANGE::RANGE_125_DPS, BMI270::DATA_RATE::DATA_100_HZ);
+    bool success = m_imu.init(BMI270::ACCEL_RANGE::RANGE_4G, BMI270::GYRO_RANGE::RANGE_250_DPS, BMI270::DATA_RATE::DATA_400_HZ);
+    if (!success) {
+        m_neopixels.setPixelColor(0, 255, 0, 0);
+        m_neopixels.setPixelColor(1, 255, 0, 0);
+        m_neopixels.show();
+
+        while(1) {
+            delay(1000);
+        }
+    }
     _calibrateGyro();    
 }
 
@@ -143,7 +152,7 @@ void SoraDrive::_setMotorOutput(mcpwm_cmpr_handle_t cmpr,
 
 void SoraDrive::_calibrateGyro() {
     Serial.println("Calibrating Gyro");
-    static const int samples{100};
+    static const int samples{1000};
     BMI270::AxisData accelData{};
     BMI270::AxisData gyroData{};
     BMI270::CalibOffset calibData{0, 0, 0, 0, 0, 0};
@@ -156,7 +165,7 @@ void SoraDrive::_calibrateGyro() {
         calibData.gyro_x += gyroData.x;
         calibData.gyro_y += gyroData.y;
         calibData.gyro_z += gyroData.z;
-        delay(10);
+        delay(5);
     }
     calibData.accel_x /= -samples * 0.061;
     calibData.accel_y /= -samples * 0.061;
@@ -165,8 +174,41 @@ void SoraDrive::_calibrateGyro() {
     calibData.gyro_x /= -samples * 0.061;
     calibData.gyro_y /= -samples * 0.061;
     calibData.gyro_z /= -samples * 0.061;
-    m_imu.setCalibrationOffset(calibData);
+    bool success = m_imu.setCalibrationOffset(calibData);
+    if (!success) {
+        m_neopixels.setPixelColor(0, 255, 0, 0);
+        m_neopixels.setPixelColor(1, 255, 0, 0);
+        m_neopixels.show();
+        while(1) {
+            delay(1000);
+        }
+    }
     Serial.println(calibData.gyro_z);
     Serial.println("Gyro Calibrated");
+}
 
+
+float SoraDrive::getYaw() {
+    BMI270::AxisData accelData{};
+    BMI270::AxisData gyroData{};
+
+    m_imu.readSensorData(accelData, gyroData);
+    // Serial.printf(">GyroYaw:%f\n", gyroData.z);
+    return gyroData.z;
+}
+float SoraDrive::getXAccel() {
+    BMI270::AxisData accelData{};
+    BMI270::AxisData gyroData{};
+
+    m_imu.readSensorData(accelData, gyroData);
+    // Serial.printf(">GyroYaw:%f\n", gyroData.z);
+    return accelData.x;
+}
+float SoraDrive::getYAccel() {
+    BMI270::AxisData accelData{};
+    BMI270::AxisData gyroData{};
+
+    m_imu.readSensorData(accelData, gyroData);
+    // Serial.printf(">GyroYaw:%f\n", gyroData.z);
+    return accelData.y;
 }
