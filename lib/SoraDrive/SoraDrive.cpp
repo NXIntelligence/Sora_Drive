@@ -7,32 +7,97 @@ void SoraDrive::init() {
     m_neopixels.setPixelColor(1, m_neopixels.Color(0, 0, 0));
     m_neopixels.show();
 
+    // Initialise I2C line for gyro and qwicc connector
+    Wire.begin(Config::Pins::I2C_SDA, Config::Pins::I2C_SCL, Config::I2C_CLOCKSPEED);
+
     pinMode(Config::Pins::MOTOR_SLEEP, OUTPUT);
     digitalWrite(Config::Pins::MOTOR_SLEEP, LOW);
     _initMCPWM();
 }
 
-void SoraDrive::initGyro(bool calibrateGyro) {
-    Wire.begin(Config::Pins::I2C_SDA, Config::Pins::I2C_SCL, 400'000);
-    bool success = m_imu.init(BMI270::ACCEL_RANGE::RANGE_4G, BMI270::GYRO_RANGE::RANGE_250_DPS, BMI270::DATA_RATE::DATA_400_HZ);
+void SoraDrive::initImu(BMI270::ACCEL_RANGE accelSensitivity, BMI270::GYRO_RANGE gyroSensitivity, BMI270::DATA_RATE dataRate, bool calibrateImu) {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    // Initialise I2C bus
+    Wire.begin(Config::Pins::I2C_SDA, Config::Pins::I2C_SCL, Config::I2C_CLOCKSPEED);
+    // Initialise the gyro
+    bool success = m_imu.init(accelSensitivity, gyroSensitivity, dataRate);
     if (!success) {
+        // set the Neo's red, indicating failure to initialise
         m_neopixels.setPixelColor(0, 255, 0, 0);
         m_neopixels.setPixelColor(1, 255, 0, 0);
         m_neopixels.show();
-
+        Serial.println("Failed to initialise the Imu.");
         while(1) {
             delay(1000);
         }
     }
-    _calibrateGyro();    
+    // set the period per sample for the rtos task
+    switch(dataRate) {
+        case BMI270::DATA_RATE::DATA_25_HZ:
+            m_imuPollPeriod = pdMS_TO_TICKS(1000 / 25);
+            break;
+        case BMI270::DATA_RATE::DATA_50_HZ:
+            m_imuPollPeriod = pdMS_TO_TICKS(1000 / 50);
+            break;
+        case BMI270::DATA_RATE::DATA_100_HZ:
+            m_imuPollPeriod = pdMS_TO_TICKS(1000 / 100);
+            break;
+        case BMI270::DATA_RATE::DATA_200_HZ:
+            m_imuPollPeriod = pdMS_TO_TICKS(1000 / 200);
+            break;
+        case BMI270::DATA_RATE::DATA_400_HZ:
+            m_imuPollPeriod = pdMS_TO_TICKS(1000 / 400);
+            break;
+        case BMI270::DATA_RATE::DATA_800_HZ:
+            m_imuPollPeriod = pdMS_TO_TICKS(1000 / 800);
+            break;
+    }
+
+    if (calibrateImu) _calibrateImu();
+    // start the gyro reading task
+    xTaskCreatePinnedToCore(
+        _updateImuReadingTask,
+        "imu task",
+        4096, // 4096 bytes of stack memory
+        this,
+        1, // priority 1
+        NULL,
+        1 // Run on main core 1
+    );
 }
 
-void SoraDrive::printYaw() {
-    BMI270::AxisData accelData{};
-    BMI270::AxisData gyroData{};
+ImuReading SoraDrive::getImuReading() { return m_imuReading; }
 
-    m_imu.readSensorData(accelData, gyroData);
-    Serial.printf(">GyroYaw:%f\n", gyroData.z);
+void SoraDrive::_updateImuReadingTask(void* pvParameters) {
+    SoraDrive* soraDrive {static_cast<SoraDrive*>(pvParameters)};
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    TickType_t xLastPollTime = xTaskGetTickCount();    
+    for (;;) {
+        // finds the time that has passed
+        TickType_t currentTime{pdTICKS_TO_MS(xTaskGetTickCount())}; // ms
+        float deltaTime{static_cast<float>(currentTime - pdTICKS_TO_MS(xLastPollTime)) / 1000.0f}; // seconds
+        xLastPollTime = xTaskGetTickCount();
+
+        // get the imu data
+        BMI270::AxisData accelData;
+        BMI270::AxisData gyroData;
+        soraDrive->m_imu.readSensorData(accelData, gyroData); // TODO needs a mutex semaphore on the I2C line when connecting other devices.
+
+        // using the time that has passed integrate the gyro data which is in degrees per second
+        float gyroXOffset = deltaTime * gyroData.x;
+        float gyroYOffset = deltaTime * gyroData.y;
+        float gyroZOffset = deltaTime * gyroData.z;
+
+        // Enters spinlock when editing the gyro data, as the data may be used in other threads and rtos tasks
+        portENTER_CRITICAL(&(soraDrive->m_gyroReadingLock));
+        soraDrive->m_imuReading.setAccel(accelData.x, accelData.y, accelData.z);
+        soraDrive->m_imuReading.setGyro(gyroData.x, gyroData.y, gyroData.z);
+        soraDrive->m_imuReading.addRotOffset(gyroXOffset, gyroYOffset, gyroZOffset);
+        portEXIT_CRITICAL(&(soraDrive->m_gyroReadingLock));
+
+        // ensures the core is polling at the defined imuPollPeriod
+        xTaskDelayUntil(&xLastWakeTime, soraDrive->m_imuPollPeriod);
+    }
 }
 
 void SoraDrive::enableMotors(bool enable) { digitalWrite(Config::Pins::MOTOR_SLEEP, enable ? HIGH : LOW); }
@@ -150,7 +215,7 @@ void SoraDrive::_setMotorOutput(mcpwm_cmpr_handle_t cmpr,
     }
 }
 
-void SoraDrive::_calibrateGyro() {
+void SoraDrive::_calibrateImu() {
     Serial.println("Calibrating Gyro");
     static const int samples{1000};
     BMI270::AxisData accelData{};
@@ -165,50 +230,30 @@ void SoraDrive::_calibrateGyro() {
         calibData.gyro_x += gyroData.x;
         calibData.gyro_y += gyroData.y;
         calibData.gyro_z += gyroData.z;
-        delay(5);
+        vTaskDelay(m_imuPollPeriod);
     }
-    calibData.accel_x /= -samples * 0.061;
-    calibData.accel_y /= -samples * 0.061;
-    calibData.accel_z /= -samples * 0.061;
+    float conversionRateAccel{(3.9f * 9.81f / 1000.0f)};
+    float conversionRateGyro{0.061};
+    calibData.accel_x /= -samples * conversionRateAccel;
+    calibData.accel_y /= -samples * conversionRateAccel;
+    calibData.accel_z /= -samples * conversionRateAccel;
     
-    calibData.gyro_x /= -samples * 0.061;
-    calibData.gyro_y /= -samples * 0.061;
-    calibData.gyro_z /= -samples * 0.061;
+    calibData.gyro_x /= -samples * conversionRateGyro;
+    calibData.gyro_y /= -samples * conversionRateGyro;
+    calibData.gyro_z /= -samples * conversionRateGyro;
+
+    Serial.println("IMU Calibrated with Offsets");
+    Serial.printf("Gyro x: %f y: %f z: %f\n", calibData.gyro_x * conversionRateGyro, calibData.gyro_y * conversionRateGyro, calibData.gyro_z * conversionRateGyro);
+    Serial.printf("Accelerometer x: %f y: %f z: %f\n", calibData.accel_x * conversionRateAccel, calibData.accel_y * conversionRateAccel, calibData.accel_z * conversionRateAccel);
+
     bool success = m_imu.setCalibrationOffset(calibData);
     if (!success) {
         m_neopixels.setPixelColor(0, 255, 0, 0);
         m_neopixels.setPixelColor(1, 255, 0, 0);
         m_neopixels.show();
+        Serial.println("Could not apply the gyro offset into the gyro registers.");
         while(1) {
             delay(1000);
         }
     }
-    Serial.println(calibData.gyro_z);
-    Serial.println("Gyro Calibrated");
-}
-
-
-float SoraDrive::getYaw() {
-    BMI270::AxisData accelData{};
-    BMI270::AxisData gyroData{};
-
-    m_imu.readSensorData(accelData, gyroData);
-    // Serial.printf(">GyroYaw:%f\n", gyroData.z);
-    return gyroData.z;
-}
-float SoraDrive::getXAccel() {
-    BMI270::AxisData accelData{};
-    BMI270::AxisData gyroData{};
-
-    m_imu.readSensorData(accelData, gyroData);
-    // Serial.printf(">GyroYaw:%f\n", gyroData.z);
-    return accelData.x;
-}
-float SoraDrive::getYAccel() {
-    BMI270::AxisData accelData{};
-    BMI270::AxisData gyroData{};
-
-    m_imu.readSensorData(accelData, gyroData);
-    // Serial.printf(">GyroYaw:%f\n", gyroData.z);
-    return accelData.y;
 }

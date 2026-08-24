@@ -31,6 +31,12 @@ bool BMI270::init(ACCEL_RANGE acelRange, GYRO_RANGE gyroRange, DATA_RATE dataRat
     _readModifyWrite(GYR_CONF, static_cast<uint8_t>(dataRate), 1, 4);
     _readModifyWrite(ACC_CONF, static_cast<uint8_t>(dataRate), 1, 4);
 
+    // enable high performance noise filtering for gyro
+    uint8_t gyr_conf_val;
+    if (!_readRegister(GYR_CONF, &gyr_conf_val, 1)) return false;
+    gyr_conf_val |= 1 << 6;
+    if (!_writeRegisterByte(GYR_CONF, gyr_conf_val)) return false;
+
     switch(acelRange) {
         case ACCEL_RANGE::RANGE_2G:
             m_accelScaling = 2.0f * 9.81f / 32768.0f;
@@ -207,6 +213,7 @@ bool BMI270::readSensorData(AxisData& accel, AxisData& gyro) {
 
     return true;
 }
+
 bool BMI270::setCalibrationOffset(CalibOffset& calibData) {
     // 1. Convert Accel floats to signed 8-bit integers before casting to uint8_t
     int8_t ax = static_cast<int8_t>(calibData.accel_x);
@@ -245,7 +252,14 @@ bool BMI270::setCalibrationOffset(CalibOffset& calibData) {
 
     if (!_writeRegisterByte(OFFSET_6, offset_6_val)) return false;
     
-    Serial.printf("Offset: %s\n", String(offset_6_val, BIN));
+    // enable accel offset
+    uint8_t nv_conf_val;
+    if(!_readRegister(NV_CONF, &nv_conf_val, 1)) return false;
+    nv_conf_val |= 1 << 3;
+    if(!_writeRegisterByte(NV_CONF, nv_conf_val)) return false;
+
+    // Serial.printf("Offset: %s\n", String(nv_conf_val, BIN));
+    // Serial.printf("Offset: %s\n", String(offset_6_val, BIN));
     
     return true;
 }
@@ -380,45 +394,5 @@ bool BMI270::calibrateCRT() {
         Serial.println("CRT Warning: Gain update saturated on one or more axes.");
     }
     Serial.println("CRT Calibration Success!");
-    return true;
-}
-bool BMI270::setCalibrationOffset(CalibOffset& calibData) {
-    // 1. Convert Accel floats to signed 8-bit integers before casting to uint8_t
-    int8_t ax = static_cast<int8_t>(calibData.accel_x);
-    int8_t ay = static_cast<int8_t>(calibData.accel_y);
-    int8_t az = static_cast<int8_t>(calibData.accel_z);
-
-    if (!_writeRegisterByte(OFFSET_0, static_cast<uint8_t>(ax))) return false;
-    if (!_writeRegisterByte(OFFSET_1, static_cast<uint8_t>(ay))) return false;
-    if (!_writeRegisterByte(OFFSET_2, static_cast<uint8_t>(az))) return false;
-    
-    // 2. Convert Gyro floats to signed 16-bit integers first (preserves 2's complement)
-    int16_t gx = static_cast<int16_t>(calibData.gyro_x);
-    int16_t gy = static_cast<int16_t>(calibData.gyro_y);
-    int16_t gz = static_cast<int16_t>(calibData.gyro_z);
-
-    // 3. Reinterpret as uint16_t to perform clean 10-bit masking
-    uint16_t u_gx = static_cast<uint16_t>(gx) & 0x03FF;
-    uint16_t u_gy = static_cast<uint16_t>(gy) & 0x03FF;
-    uint16_t u_gz = static_cast<uint16_t>(gz) & 0x03FF;
-
-    // Write lower 8 bits of Gyro Offsets
-    if (!_writeRegisterByte(OFFSET_3, static_cast<uint8_t>(u_gx & 0xFF))) return false;
-    if (!_writeRegisterByte(OFFSET_4, static_cast<uint8_t>(u_gy & 0xFF))) return false;
-    if (!_writeRegisterByte(OFFSET_5, static_cast<uint8_t>(u_gz & 0xFF))) return false;
-    
-    // Extract upper 2 bits (bits 8 & 9)
-    uint8_t gyr_x_msb = (u_gx >> 8) & 0x03;
-    uint8_t gyr_y_msb = (u_gy >> 8) & 0x03;
-    uint8_t gyr_z_msb = (u_gz >> 8) & 0x03;
-
-    // Pack OFFSET_6 (0x77)
-    uint8_t offset_6_val = (1 << 6)                 // gyr_off_en = 1
-                         | (gyr_z_msb << 4)         // bits 5..4
-                         | (gyr_y_msb << 2)         // bits 3..2
-                         | (gyr_x_msb << 0);        // bits 1..0
-
-    if (!_writeRegisterByte(OFFSET_6, offset_6_val)) return false;
-
     return true;
 }

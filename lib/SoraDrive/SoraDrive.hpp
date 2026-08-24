@@ -1,8 +1,13 @@
 #pragma once
+
+#include "FreeRTOS.h"
+#include "freertos/task.h"
+
+#include <driver/mcpwm_prelude.h>
+#include "Wire.h"
+
 #include "Adafruit_NeoPixel.h"
 #include "BMI270.hpp"
-#include "Wire.h"
-#include <driver/mcpwm_prelude.h>
 
 namespace Config {
     namespace Pins {
@@ -22,27 +27,53 @@ namespace Config {
         static constexpr uint32_t PWM_PERIOD_TICKS{PWM_COUNTER_FREQ / PWM_FREQ}; // the amount of ticks to count up to for a period of PWM
         static constexpr uint32_t PWM_PEAK_TICKS{PWM_PERIOD_TICKS / 2}; // the peak amount of ticks the counter counts up to
     };
+    static constexpr uint32_t I2C_CLOCKSPEED{400'000};
+};
+
+
+struct ImuReading {
+    // Accelerometer data
+    // Linear Acceleration m/ss
+    float accelX{0};
+    float accelY{0};
+    float accelZ{0};
+
+    // Gyro data
+    // Deg/s
+    float gyroX{0};
+    float gyroY{0};
+    float gyroZ{0};
+
+    // Integrated Rotation Data
+    // Degree
+    float rotX{0};
+    float rotY{0};
+    float rotZ{0};
+
+    void setAccel(float x, float y, float z) {accelX = x; accelY = y; accelZ = z;}
+    void setGyro(float x, float y, float z) {gyroX = x; gyroY = y; gyroZ = z;}
+    void setRot(float x, float y, float z) {rotX = x; rotY = y; rotZ = z;}
+    void addRotOffset(float x, float y, float z) {rotX += x; rotY += y; rotZ += z;}
 };
 
 class SoraDrive {
     public:
+
     SoraDrive() = default;
     void init(); // Initialises the neopixels, MCPWM for motor driver
-    void initGyro(bool calibrateGyro = true); // Initialises the gyro and starts an RTOS task that tracks the angles.
+    void initImu(BMI270::ACCEL_RANGE accelSensitivity, BMI270::GYRO_RANGE gyroSensitivity, BMI270::DATA_RATE dataRate, bool calibrateImu = true); // Initialises the IMU and starts an RTOS task that tracks the angles.
     void enableMotors(bool enable); // enables the motor driver
     void setMotorAOutput(float output); // sets the output between -100 to 100
     void setMotorBOutput(float output);
     void setDefaultCoastMode(); // when output is set to 0 the motor is put into coast mode
     void setDefaultBrakeMode(); // when output is set to 0 the motor is put into brake mode
-    
-    void printYaw();
-    float getYaw();
-    float getXAccel();
-    float getYAccel();
+
+    ImuReading getImuReading();
 
     Adafruit_NeoPixel& getAdafruitNeopixel() {return m_neopixels; } // returns a reference of the initialised adafruit neopixel.
     private:
-    void _calibrateGyro();
+    static void _updateImuReadingTask(void* pvParameters);
+    void _calibrateImu();
     void _initMCPWM();
     void _setMotorOutput(mcpwm_cmpr_handle_t cmpr,
                             mcpwm_gen_handle_t  genFwd,
@@ -64,4 +95,8 @@ class SoraDrive {
 
     Adafruit_NeoPixel m_neopixels{2, Config::Pins::NEOPIXEL, NEO_GRB + NEO_KHZ800};
     BMI270 m_imu{Wire};
+
+    portMUX_TYPE m_gyroReadingLock = portMUX_INITIALIZER_UNLOCKED;
+    TickType_t m_imuPollPeriod{0};
+    ImuReading m_imuReading{};
 };

@@ -47,13 +47,13 @@ class BMI270 {
         DATA_200_HZ = 0x09, 
         DATA_400_HZ = 0x0A, 
         DATA_800_HZ = 0x0B, 
-        DATA_1600_HZ = 0x0C, 
-        DATA_3200_HZ = 0x0D
+        // DATA_1600_HZ = 0x0C FreeRTOS can only poll at a max speed of 1000hz
+        // DATA_3200_HZ = 0x0D I2C at 400khz cannot read this fast
     };
 
     BMI270(TwoWire& wire) : m_wire{wire} {}
     bool init(ACCEL_RANGE acelRange, GYRO_RANGE gyroRange, DATA_RATE dataRate);
-    bool readSensorData(AxisData& accel, AxisData& gyro);
+    bool readSensorData(AxisData& accel, AxisData& gyro); // returns in dps for angular velocity and m/s for linear accel
     float getTemperature();
     bool isCommunicating(); // checks if we are communicating with the chip
     bool setCalibrationOffset(CalibOffset& calibData);
