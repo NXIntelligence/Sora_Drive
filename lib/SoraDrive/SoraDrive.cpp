@@ -68,6 +68,15 @@ void SoraDrive::initImu(BMI270::ACCEL_RANGE accelSensitivity, BMI270::GYRO_RANGE
 
 ImuReading SoraDrive::getImuReading() { return m_imuReading; }
 
+float SoraDrive::getHeadingAngle() {
+    return m_imuReading.rotZ; // returns the integrated rotation around the z axis in degrees
+}
+
+void SoraDrive::setNeoPixelColor(uint8_t index, uint32_t color) {
+    m_neopixels.setPixelColor(index, color);
+    m_neopixels.show();
+}
+
 void SoraDrive::_updateImuReadingTask(void* pvParameters) {
     SoraDrive* soraDrive {static_cast<SoraDrive*>(pvParameters)};
     TickType_t xLastWakeTime = xTaskGetTickCount();
