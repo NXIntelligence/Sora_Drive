@@ -71,7 +71,8 @@ class SoraDrive {
     ImuReading getImuReading();
 
     float getHeadingAngle();
-    void setNeoPixelColor(uint8_t index, uint32_t color);
+    void setNeoPixelColor(uint8_t index, uint8_t r, uint8_t g, uint8_t b);
+    void setNeoPixelColorHSV(uint8_t index, uint16_t hue, uint8_t sat, uint8_t val);
 
     Adafruit_NeoPixel& getAdafruitNeopixel() {return m_neopixels; } // returns a reference of the initialised adafruit neopixel.
     private:

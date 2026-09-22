@@ -72,8 +72,13 @@ float SoraDrive::getHeadingAngle() {
     return m_imuReading.rotZ; // returns the integrated rotation around the z axis in degrees
 }
 
-void SoraDrive::setNeoPixelColor(uint8_t index, uint32_t color) {
-    m_neopixels.setPixelColor(index, color);
+void SoraDrive::setNeoPixelColor(uint8_t index, uint8_t r, uint8_t g, uint8_t b) {
+    m_neopixels.setPixelColor(index, r, g, b);
+    m_neopixels.show();
+}
+
+void SoraDrive::setNeoPixelColorHSV(uint8_t index, uint16_t hue, uint8_t sat, uint8_t val) {
+    m_neopixels.setPixelColor(index, m_neopixels.ColorHSV(hue, sat, val));
     m_neopixels.show();
 }
 
