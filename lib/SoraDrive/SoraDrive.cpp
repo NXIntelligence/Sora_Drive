@@ -15,6 +15,10 @@ void SoraDrive::init() {
     _initMCPWM();
 }
 
+void SoraDrive::initImu() {
+    initImu(BMI270::ACCEL_RANGE::RANGE_4G, BMI270::GYRO_RANGE::RANGE_500_DPS, BMI270::DATA_RATE::DATA_100_HZ, true);
+}
+
 void SoraDrive::initImu(BMI270::ACCEL_RANGE accelSensitivity, BMI270::GYRO_RANGE gyroSensitivity, BMI270::DATA_RATE dataRate, bool calibrateImu) {
     vTaskDelay(pdMS_TO_TICKS(1000));
     // Initialise I2C bus

@@ -62,6 +62,7 @@ class SoraDrive {
     SoraDrive() = default;
     void init(); // Initialises the neopixels, MCPWM for motor driver
     void initImu(BMI270::ACCEL_RANGE accelSensitivity, BMI270::GYRO_RANGE gyroSensitivity, BMI270::DATA_RATE dataRate, bool calibrateImu = true); // Initialises the IMU and starts an RTOS task that tracks the angles.
+    void initImu(); // default initialisation
     void enableMotors(bool enable); // enables the motor driver
     void setMotorAOutput(float output); // sets the output between -100 to 100
     void setMotorBOutput(float output);
