@@ -9,6 +9,7 @@ constexpr int PIN_IR_RIGHT  = 3;
 SoraDrive soraDrive{};
 
 void drive(float fwd, float turn);
+void logic1();
 void logic2();
 
 void setup() {
@@ -87,6 +88,38 @@ void logic2() {
     }
 
   delay(15);
+}
+
+
+void logic1() {
+    // Read sensor states
+    bool leftSeen = digitalRead(PIN_IR_LEFT);
+    bool centerSeen = digitalRead(PIN_IR_CENTER);
+    bool rightSeen = digitalRead(PIN_IR_RIGHT);
+
+  // Line following steering logic
+  if (centerSeen && !leftSeen && !rightSeen) {
+    // Centered on the line: drive straight
+    drive(BASE_SPEED, 0.0f);
+  } 
+  else if (leftSeen && !rightSeen) {
+    // Veering right: turn left to re-center
+    drive(BASE_SPEED * 0.7f, -TURN_SPEED);
+  } 
+  else if (rightSeen && !leftSeen) {
+    // Veering left: turn right to re-center
+    drive(BASE_SPEED * 0.7f, TURN_SPEED);
+  } 
+  else if (!leftSeen && !centerSeen && !rightSeen) {
+    // Lost line completely: stop motors
+    drive(0.0f, 0.0f);
+  } 
+  else {
+    // Junction/intersection or all active: proceed cautiously forward
+    drive(BASE_SPEED * 0.5f, 0.0f);
+  }
+
+  delay(20);
 }
 
 void drive(float fwd, float turn) {
