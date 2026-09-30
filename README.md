@@ -32,9 +32,9 @@ This repository contains the core C++ driver library for SoraDrive, providing ha
 ### How do I set up my environment?
 * Download and install **Visual Studio Code**.
 * Install the **PlatformIO IDE** extension.
-*
-* **<<<<<<<<<<<<<<.TO BE ADDED>>>>>>>>>>>>>>**
-* 
+* Download and Install **Git**
+* Download this github repository as a **zip file**
+* Unzip the file and open in **Visual Studio Code**
 * Configure your application inside `src/main.cpp`.
 * Explore ready-to-run implementations in the `examples` directory.
 
