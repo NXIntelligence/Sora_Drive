@@ -1,19 +1,17 @@
 #include <Arduino.h>
 #include "SoraDrive.hpp"
 
-// Sensor pins (from far-left to far-right)
-constexpr int PIN_IR_LEFT_LEFT   = 1;
-constexpr int PIN_IR_LEFT        = 2;
-constexpr int PIN_IR_CENTER      = 42;
-constexpr int PIN_IR_RIGHT       = 41;
-constexpr int PIN_IR_RIGHT_RIGHT = 40;
+// Change the 0's such that they match the pins on your sora drive
+// CHANGE HERE                      
+constexpr int PIN_IR_LEFT_LEFT   = 0;
+constexpr int PIN_IR_LEFT        = 0;
+constexpr int PIN_IR_CENTER      = 0;
+constexpr int PIN_IR_RIGHT       = 0;
+constexpr int PIN_IR_RIGHT_RIGHT = 0;
 
 SoraDrive soraDrive{};
 
-// Speed settings (0 to 100)
-float BASE_SPEED = 100.0f;
-float CURVE_SPEED = 40.0f;
-float SPIN_SPEED  = 40.0f; // Speed when spinning on the spot
+// Speed when spinning on the spot
 
 // Memory flags: remember what the robot is doing until the center finds the line
 bool spinningLeft  = false;
@@ -46,7 +44,6 @@ void loop() {
   bool rightRightSeen = digitalRead(PIN_IR_RIGHT_RIGHT);
 
   // --- 1. DECIDE WHAT TO DO ---
-
   if (centerSeen == true && !leftLeftSeen && !rightRightSeen) {
     // Center found the line! Turn off all turning flags and go straight
     spinningLeft  = false;
@@ -54,48 +51,50 @@ void loop() {
     curvingLeft   = false;
     curvingRight  = false;
   }
-  else if (spinningLeft == true || spinningRight == true) {
+  else if (/*check if spinningLeft or spinningRight is true*/) {
     // If the robot is already spinning, KEEP SPINNING!
     // Don't stop until the center sensor above sees the line.
   }
-  else if (leftLeftSeen == true) {
+  else if (/*check if leftLeftSeen is true*/) {
     // Far-left saw the line: sharp corner! Start spinning left
     spinningLeft = true;
   }
-  else if (rightRightSeen == true) {
+  else if (/*check if rightRightSpin is true*/) {
     // Far-right saw the line: sharp corner! Start spinning right
     spinningRight = true;
   }
-  else if (leftSeen == true) {
+  else if (/*check if leftSpin is true*/) {
     // Gentle curve left
     curvingLeft = true;
   }
-  else if (rightSeen == true) {
+  else if (/*check if rightSpin is true*/) {
     // Gentle curve right
     curvingRight = true;
   }
 
   // --- 2. MOVE THE MOTORS ---
-
   if (spinningRight == true) {
-    // Spin on the spot (forward = 0, turn = positive)
-    drive(0, -SPIN_SPEED);
+    // Spin on the spot (forward = 0, turn = negative)
+    // forward is set to 0 so it wont drive forward
+    // then a negative 40 is passed into turn so it turns 40% of full speed counter
+    // clockwise
+    drive(0, -40);
   }
   else if (spinningLeft == true) {
-    // Spin on the spot (forward = 0, turn = negative)
-    drive(0, SPIN_SPEED);
+    // Spin on the spot (forward = 0, turn = positive)
+    drive(/*fill this in*/);
   }
   else if (curvingRight == true) {
     // Drive forward while curving right
-    drive(BASE_SPEED * 0.6, -CURVE_SPEED);
+    drive(/*fill this in*/);
   }
   else if (curvingLeft == true) {
     // Drive forward while curving left
-    drive(BASE_SPEED * 0.6, CURVE_SPEED);
+    drive(/*fill this in*/);
   }
   else {
     // Drive straight ahead
-    drive(BASE_SPEED, 0);
+    drive(/*fill this in*/);
   }
 
   printDebug();
